@@ -1,20 +1,27 @@
 """
-DT2213 项目：左手 5 指键盘 + 右手手势切换音色的 FM Formant 合成器。
+DT2213 project: left-hand 5-finger keyboard + right-hand gesture preset switch
+on an FM Formant synthesizer.
 
-FM 结构：每根手指 = 一个 voice（FM 振荡器 A 载波 + 振荡器 B 调制器 + 自己的 ADSR）
-所有 voice 求和后过两个共振峰带通（嘴形 -> F1/F2），形成一个"会唱元音的合唱"。
+Architecture:
+  Each finger = one Voice (FM osc A carrier + osc B modulator + its own ADSR).
+  All voices are summed and run through two formant band-pass resonators
+  (mouth shape -> F1/F2), so the whole thing sings vowels like a choir.
 
-控制方式：
-  左手 5 根手指          -> 各对应一个音符（拇指最低 ~ 小指最高）
-  弯下手指 / 伸直手指    -> 该音 note-on / note-off（弯着就一直响）
-  同时弯下多根          -> 几个音叠起来 = 和弦（多 voice 同时发声）
-  右手 ✋张开 / ✊握拳   -> 切换音色：pad（氛围）/ key（清脆）
-  两手水平距离          -> 音色明暗（调制深度 MOD_INDEX）
-  下巴张开    (Face)    -> 共振峰 F1
-  咧嘴/圆唇   (Face)    -> 共振峰 F2
+Controls:
+  Left hand, 5 fingers       -> 5 pentatonic notes (thumb lowest, pinky highest)
+  Curl / extend a finger     -> that note's note-on / note-off (held while bent)
+  Curl multiple fingers      -> chord (multiple voices sound at once)
+  Right hand gesture         -> switch timbre preset:
+      Open_Palm  (Open Palm) -> pad    (warm choir)
+      Closed_Fist (Fist)     -> bell   (crystalline shimmer)
+      Victory     (Victory)  -> glass  (bowed glass bowls)
+      Pointing_Up (Point)    -> drone  (vast slow swell)
+  Horizontal distance between the two hands -> timbre brightness (MOD_INDEX)
+  Jaw open      (Face)       -> formant F1
+  Smile / pucker (Face)      -> formant F2
 
-画面已做镜像，符合"照镜子"直觉。
-按 q 退出。
+The camera frame is mirrored so left/right hand labels match the user's view.
+Press q to quit.
 """
 
 import os
@@ -29,69 +36,103 @@ from scipy.signal import iirpeak, lfilter
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# 模型文件与本脚本放在同一目录，按绝对路径加载（不依赖运行时的工作目录）
+# Model files live next to this script, loaded by absolute path
 HERE = os.path.dirname(os.path.abspath(__file__))
 GESTURE_MODEL = os.path.join(HERE, "gesture_recognizer.task")
 FACE_MODEL = os.path.join(HERE, "face_landmarker.task")
 
-# ===== 音频参数 =====
+# ===== Audio parameters =====
 SAMPLE_RATE = 44100
-BLOCK_SIZE = 512
-MASTER_AMP = 0.4  # 总音量上限
+# Smaller block -> shorter trigger-to-sound latency
+# Too small risks underruns (audible clicks). 256 = ~5.8 ms, 128 = ~2.9 ms.
+BLOCK_SIZE = 256
+MASTER_AMP = 0.2    # master volume. No soft-clipper: keep this small enough
+                    # that a 5-voice bright chord stays mostly under ±1, so the
+                    # output is fully linear (no waveshaping distortion).
 
-# ===== FM 全局参数 =====
-# 调制深度 MOD_INDEX：由两手水平距离控制（音色明暗），区间如下
+# ===== FM global parameters =====
+# Modulation index range; the actual value is controlled by hand distance
+# (see DIST_MIN/MAX below) and feeds every voice's FM depth.
 MOD_INDEX_MIN, MOD_INDEX_MAX = 0.0, 15.0
 
-# ===== 音色预设（pad / key）=====
-# 切换预设时一次性改写所有 voice 的 ADSR 参数和 mod_ratio。
-# attack/decay/release 单位是秒；sustain 是 0~1 电平；mod_ratio = 调制器 / 载波。
+# ===== Timbre presets (4 ethereal flavours) =====
+# Switching a preset rewrites every voice's ADSR parameters and the shared
+# mod_ratio in one shot. attack/decay/release are seconds, sustain is 0..1.
+# mod_ratio = modulator freq / carrier freq.
+#   1.0   -> in-tune with the carrier, harmonic spectrum, vocal/pad-like
+#   1.5   -> perfect fifth above, open / wide
+#   2.0   -> octave above, brighter but still harmonic
+#   3.5   -> non-integer, inharmonic, classic FM-bell sparkle
 PRESETS = {
-    # pad: 慢起、长延、绵长——氛围合唱
     "pad": {
-        "amp_attack":  0.50, "amp_decay":  1.50, "amp_sustain": 0.70, "amp_release": 2.50,
-        "mod_attack":  1.00, "mod_decay":  0.60, "mod_sustain": 0.80, "mod_release": 2.00,
-        "mod_ratio":   1.0,
+        "amp_attack": 0.60, "amp_decay": 1.50, "amp_sustain": 0.75, "amp_release": 3.00,
+        "mod_attack": 1.20, "mod_decay": 0.80, "mod_sustain": 0.80, "mod_release": 2.50,
+        "mod_ratio":  1.0,
     },
-    # key: 快起、快衰、短尾——清脆敲击，像电钢/钟琴
-    "key": {
-        "amp_attack":  0.005, "amp_decay": 0.55, "amp_sustain": 0.10, "amp_release": 0.35,
-        "mod_attack":  0.005, "mod_decay": 0.35, "mod_sustain": 0.00, "mod_release": 0.30,
-        "mod_ratio":   2.0,
+    "bell": {
+        "amp_attack": 0.003, "amp_decay": 4.00, "amp_sustain": 0.00, "amp_release": 2.00,
+        "mod_attack": 0.003, "mod_decay": 2.00, "mod_sustain": 0.00, "mod_release": 2.00,
+        "mod_ratio":  3.5,
+    },
+    "glass": {
+        "amp_attack": 0.40, "amp_decay": 1.20, "amp_sustain": 0.60, "amp_release": 3.00,
+        "mod_attack": 1.50, "mod_decay": 0.80, "mod_sustain": 0.70, "mod_release": 2.50,
+        "mod_ratio":  2.0,
+    },
+    "drone": {
+        "amp_attack": 1.50, "amp_decay": 2.00, "amp_sustain": 0.90, "amp_release": 5.00,
+        "mod_attack": 3.00, "mod_decay": 1.50, "mod_sustain": 1.00, "mod_release": 5.00,
+        "mod_ratio":  1.5,
     },
 }
 DEFAULT_PRESET = "pad"
 
-# 右手手势 -> 预设名（其它手势保持当前预设不变）
+# Right-hand gesture -> preset name. Anything else leaves the preset unchanged.
 GESTURE_TO_PRESET = {
-    "Open_Palm":   "pad",   # ✋ 张开 -> 氛围
-    "Closed_Fist": "key",   # ✊ 握拳 -> 清脆
+    "Open_Palm":   "pad",     # open palm  -> warm pad
+    "Closed_Fist": "bell",    # fist       -> bell strike
+    "Victory":     "glass",   # peace sign -> bowed glass
+    "Pointing_Up": "drone",   # index up   -> vast drone
 }
-PRESET_DEBOUNCE_FRAMES = 5  # 同一手势连续 N 帧才切换预设，防误切
+# Same gesture must be stable for N frames before the preset actually switches,
+# to avoid flicker on momentary mis-classification.
+PRESET_DEBOUNCE_FRAMES = 5
 
-# ===== 手指键盘 =====
-PENTATONIC_STEPS = [0, 2, 4, 7, 9]
-SCALE_ROOT_HZ = 65.41   # C2
-KEYBOARD_OCTAVE = 1     # 5 个音落在第几个八度（0 起）
+# HUD tint per preset (BGR for cv2.putText).
+PRESET_COLORS = {
+    "pad":   (180, 255, 200),  # mint
+    "bell":  (255, 220, 180),  # icy blue
+    "glass": (220, 255, 220),  # pale aqua
+    "drone": (255, 180, 220),  # lavender
+}
 
-# 手指弯曲判定（带迟滞，防抖动）：弯曲比例低于 CURL_ON 判为弯下、
-# 高于 CURL_OFF 判为伸直。每根手指独立——顺序：拇/食/中/无名/小。
-# 拇指在手掌放松时本来就略弯，阈值要明显更低，需刻意大幅弯曲才触发。
+# ===== Finger keyboard =====
+PENTATONIC_STEPS = [0, 2, 4, 7, 9]  # major pentatonic semitone offsets
+SCALE_ROOT_HZ = 65.41               # C2 -- lowest possible note
+KEYBOARD_OCTAVE = 1                 # which octave (0-based) the 5 notes sit in
+
+# Per-finger curl thresholds with hysteresis.
+# Curl ratio < CURL_ON  -> finger is now bent (note-on).
+# Curl ratio > CURL_OFF -> finger is now straight (note-off).
+# Order: thumb / index / middle / ring / pinky.
+# The thumb is slightly bent even in a relaxed hand, so its threshold must
+# be much lower -- only a deliberate, deep bend should trigger it.
 CURL_ON = [0.70, 0.95, 0.95, 0.95, 0.95]
 CURL_OFF = [0.75, 1.00, 1.00, 1.00, 1.00]
 
-# 共振峰可达范围（Hz）—— 由嘴形控制
+# Formant centre-frequency ranges (Hz), swept by mouth shape.
 F1_MIN, F1_MAX = 200.0, 1600.0
 F2_MIN, F2_MAX = 500.0, 3200.0
 
-# 两个共振峰谐振器的 Q 值（固定）
+# Resonator quality factor (fixed). Higher Q = narrower, more "vowel-like".
 FILTER_Q = 4.0
 
-# 两手手腕的水平距离映射到调制深度（音色明暗）的区间。
-# 两手靠拢 -> 暗，张开 -> 亮；先看终端打印的 dist 实际值再校准
+# Horizontal distance between the two wrists (normalised image coords) mapped
+# to MOD_INDEX. Hands together -> dark, hands apart -> bright.
+# Watch the printed `dist=` value to calibrate.
 DIST_MIN, DIST_MAX = 0.15, 0.75
 
-# 5 个参考元音的 (F1, F2)，仅用于在终端/画面显示"猜到的元音"
+# Reference vowel formants, used only to label the nearest vowel on screen.
 VOWEL_REF = {
     "i": (240, 2400),
     "e": (390, 2300),
@@ -102,22 +143,23 @@ VOWEL_REF = {
 
 
 def note_freq(degree, octave):
-    """五声音阶第 degree 级（1~5）、第 octave 个八度（0 起）-> 频率（Hz）。"""
+    """Pentatonic degree (1..5) in the given octave (0-based) -> frequency (Hz)."""
     step = PENTATONIC_STEPS[degree - 1]
     return SCALE_ROOT_HZ * 2.0 ** (octave + step / 12.0)
 
 
-# 5 根手指对应的音符频率：拇指(0)最低 ~ 小指(4)最高
+# Five fixed note frequencies, one per finger (thumb=lowest, pinky=highest).
 NOTE_FREQS = [note_freq(d, KEYBOARD_OCTAVE) for d in range(1, 6)]
 
-# 5 根手指的指尖关键点（拇/食/中/无名/小）
+# MediaPipe hand-landmark indices of the 5 fingertips (thumb..pinky).
 FINGER_TIPS = [4, 8, 12, 16, 20]
 
 
 class ADSR:
-    """线性 ADSR 包络发生器。每次 process() 按 gate 状态生成一段包络。
+    """Linear ADSR envelope generator. Each call to process() advances one block.
 
-    attack/decay/sustain/release 可以在运行时被改（apply_preset 切音色时会改）。
+    attack / decay / sustain / release can be mutated at any time
+    (apply_preset() rewrites them when the user switches timbre).
     """
 
     def __init__(self, sample_rate, attack, decay, sustain, release):
@@ -131,6 +173,7 @@ class ADSR:
 
     def process(self, frames, gate):
         out = np.empty(frames, dtype=np.float64)
+        # Per-sample increments (max(1,...) guards against zero-second segments).
         a_inc = 1.0 / max(1.0, self.attack * self.sr)
         d_inc = (1.0 - self.sustain) / max(1.0, self.decay * self.sr)
         r_inc = 1.0 / max(1.0, self.release * self.sr)
@@ -164,9 +207,10 @@ class ADSR:
 
 
 class Voice:
-    """单个音符：FM 振荡器（A 载波 + B 调制器）+ 自己的 ADSR + 自己的相位。
+    """One sounding note: FM (A carrier + B modulator) + its own ADSR + phases.
 
-    note_on/note_off 由视觉线程调用；render 由音频线程在每个块调用一次。
+    note_on / note_off are called from the vision thread; render() is called
+    once per block from the audio thread.
     """
 
     def __init__(self, sample_rate):
@@ -175,7 +219,8 @@ class Voice:
         self.gate = False
         self._phase_c = 0.0
         self._phase_m = 0.0
-        # ADSR 起始用 pad 的默认值；apply_preset 会立刻覆盖
+        # ADSR params get overwritten immediately by apply_preset(); these
+        # initial values just have to be non-degenerate.
         self.amp_env = ADSR(sample_rate, 0.5, 1.5, 0.7, 2.5)
         self.mod_env = ADSR(sample_rate, 1.0, 0.6, 0.8, 2.0)
 
@@ -187,10 +232,11 @@ class Voice:
         self.gate = False
 
     def render(self, frames, mod_index, mod_ratio):
-        """渲染本块的 FM 信号 × amp_env；返回长度 frames 的 numpy。"""
+        """Render this voice's FM signal * amp_env for one block (length=frames)."""
         amp_env = self.amp_env.process(frames, self.gate)
         mod_env = self.mod_env.process(frames, self.gate)
-        # 本块内 voice 的频率不变 -> 用简单累加即可（无需 cumsum）
+        # Frequency is constant within a block, so plain arithmetic is enough
+        # (no need for cumsum, which we'd only need for varying freq).
         n = np.arange(1, frames + 1)
         dphi_c = 2.0 * np.pi * self.freq / self.sr
         dphi_m = 2.0 * np.pi * self.freq * mod_ratio / self.sr
@@ -203,31 +249,34 @@ class Voice:
 
 
 class FormantSynth:
-    """N 个 Voice 同时发声 -> 求和 -> 两个共振峰带通 -> 输出。
+    """N voices summed -> two formant band-pass filters -> output.
 
-    多 voice 同时 gate=True 即和弦；同一 voice 仅对应一根手指。
-    所有 voice 共享 mod_index（亮度）、mod_ratio（音色）、F1/F2（元音）。
+    Several voices gated at once = a chord; each finger drives exactly one voice.
+    F1/F2 (vowel), mod_index (brightness) and mod_ratio (timbre) are shared
+    across all voices.
     """
 
     def __init__(self, sample_rate, num_voices=5):
         self.sr = sample_rate
         self.voices = [Voice(sample_rate) for _ in range(num_voices)]
 
-        # 全局共振峰 + 调制深度（视觉线程写 target_*，callback 平滑跟随）
+        # Shared formants + modulation index. Vision thread writes target_*;
+        # the callback smooths the current value towards target every block.
         self.f1 = 600.0; self.target_f1 = 600.0
         self.f2 = 1500.0; self.target_f2 = 1500.0
         self.mod_index = MOD_INDEX_MIN; self.target_mod_index = MOD_INDEX_MIN
 
-        # 音色预设（pad / key）
+        # Active preset (sets ADSR + mod_ratio).
         self.preset = None
         self.mod_ratio = 1.0
         self.apply_preset(DEFAULT_PRESET)
 
-        # 共振峰滤波器状态（lfilter 的延迟单元）
+        # Per-filter state (delay units used by lfilter to keep continuity
+        # across blocks).
         self._zi1 = np.zeros(2)
         self._zi2 = np.zeros(2)
 
-    # ---- 视觉线程接口 ----
+    # ---- vision-thread API ----
     def note_on(self, voice_idx, freq):
         self.voices[voice_idx].note_on(freq)
 
@@ -235,7 +284,7 @@ class FormantSynth:
         self.voices[voice_idx].note_off()
 
     def apply_preset(self, name):
-        """切换音色：覆盖所有 voice 的 ADSR 参数和 mod_ratio。"""
+        """Switch timbre: overwrite every voice's ADSR params and mod_ratio."""
         p = PRESETS[name]
         for v in self.voices:
             v.amp_env.attack  = p["amp_attack"]
@@ -253,35 +302,40 @@ class FormantSynth:
     def any_gate(self):
         return any(v.gate for v in self.voices)
 
-    # ---- 音频线程 ----
+    # ---- audio thread ----
     def callback(self, outdata, frames, _time, status):
         if status:
             print("audio status:", status)
 
-        # 全局参数每块向目标平滑一步，消除跳变
+        # Smooth shared params one step per block to remove zipper noise.
         self.f1 += 0.35 * (self.target_f1 - self.f1)
         self.f2 += 0.35 * (self.target_f2 - self.f2)
         self.mod_index += 0.35 * (self.target_mod_index - self.mod_index)
 
-        # ---- 1. 渲染并求和所有 voice 的 FM 声源 ----
+        # 1. Render every voice and sum the FM sources.
         mixed_source = np.zeros(frames, dtype=np.float64)
         for v in self.voices:
             mixed_source += v.render(frames, self.mod_index, self.mod_ratio)
 
-        # ---- 2. 两个共振峰带通谐振器（公用）----
+        # 2. Two formant band-pass resonators, shared across voices.
         b1, a1 = iirpeak(self.f1, FILTER_Q, fs=self.sr)
         b2, a2 = iirpeak(self.f2, FILTER_Q, fs=self.sr)
         y1, self._zi1 = lfilter(b1, a1, mixed_source, zi=self._zi1)
         y2, self._zi2 = lfilter(b2, a2, mixed_source, zi=self._zi2)
 
-        # ---- 3. 混合 + 软削波 ----
+        # 3. Mix and output (fully linear -- no soft clipper, no waveshaping
+        # distortion). MASTER_AMP is kept low so normal play stays under ±1;
+        # the np.clip below is just a hard safety net for extreme worst-case
+        # spikes and shouldn't trigger in everyday use.
         mixed = 0.5 * y1 + 0.5 * y2
-        out = MASTER_AMP * np.tanh(1.5 * mixed)
+        out = MASTER_AMP * mixed
+        np.clip(out, -0.99, 0.99, out=out)
         outdata[:, 0] = out.astype(np.float32)
 
 
-# ===== MediaPipe 模型 =====
-# GestureRecognizer 同时给出：手部 21 关键点 + 左右手标签 + 手势分类
+# ===== MediaPipe models =====
+# GestureRecognizer gives all three we need: hand landmarks, left/right label
+# and a discrete gesture class per hand.
 gesture_options = vision.GestureRecognizerOptions(
     base_options=python.BaseOptions(model_asset_path=GESTURE_MODEL),
     running_mode=vision.RunningMode.VIDEO,
@@ -295,14 +349,15 @@ face_options = vision.FaceLandmarkerOptions(
 )
 
 HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),         # 拇指
-    (0, 5), (5, 6), (6, 7), (7, 8),         # 食指
-    (5, 9), (9, 10), (10, 11), (11, 12),    # 中指
-    (9, 13), (13, 14), (14, 15), (15, 16),  # 无名指
-    (13, 17), (17, 18), (18, 19), (19, 20), # 小指
-    (0, 17),                                # 掌根
+    (0, 1), (1, 2), (2, 3), (3, 4),         # thumb
+    (0, 5), (5, 6), (6, 7), (7, 8),         # index
+    (5, 9), (9, 10), (10, 11), (11, 12),    # middle
+    (9, 13), (13, 14), (14, 15), (15, 16),  # ring
+    (13, 17), (17, 18), (18, 19), (19, 20), # pinky
+    (0, 17),                                # palm base
 ]
 
+# Outer / inner lip ring landmark indices in MediaPipe Face Mesh.
 LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375,
               291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
 LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
@@ -310,14 +365,22 @@ LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
 
 
 def finger_curl_ratios(landmarks):
-    """5 根手指的弯曲比例（拇/食/中/无名/小）。直伸 >1、弯曲 <1。"""
+    """Curl ratio for each of the 5 fingers (thumb, index, middle, ring, pinky).
+
+    Four-finger metric: dist(wrist, tip) / dist(wrist, PIP joint). Straight
+    fingers stretch the tip beyond the PIP -> ratio > 1; bent fingers fold
+    the tip back toward the palm -> ratio < 1.
+    Thumb is special: dist(tip 4, palm 9) / dist(thumb-MCP 2, palm 9), since
+    the thumb folds across the palm rather than toward the wrist.
+    Distance-based metrics keep working under hand rotation.
+    """
     def dist(a, b):
         return np.hypot(landmarks[a].x - landmarks[b].x,
                         landmarks[a].y - landmarks[b].y)
 
     ratios = []
     base = dist(2, 9)
-    ratios.append(dist(4, 9) / base if base > 1e-6 else 1.0)  # 拇指
+    ratios.append(dist(4, 9) / base if base > 1e-6 else 1.0)  # thumb
     for tip, pip in ((8, 6), (12, 10), (16, 14), (20, 18)):
         d_pip = dist(0, pip)
         ratios.append(dist(0, tip) / d_pip if d_pip > 1e-6 else 1.0)
@@ -325,6 +388,7 @@ def finger_curl_ratios(landmarks):
 
 
 def draw_hand(frame, landmarks, color):
+    """Draw the 21 landmarks of one hand plus the connecting bones."""
     h, w = frame.shape[:2]
     pts = [(int(p.x * w), int(p.y * h)) for p in landmarks]
     for a, b in HAND_CONNECTIONS:
@@ -334,7 +398,7 @@ def draw_hand(frame, landmarks, color):
 
 
 def draw_finger_keys(frame, landmarks, finger_down):
-    """在键盘手 5 个指尖标出音符序号；弯下的手指 = 橙色实心。"""
+    """Mark each fingertip with its note number; bent ones are filled orange."""
     h, w = frame.shape[:2]
     for i, tip in enumerate(FINGER_TIPS):
         x = int(landmarks[tip].x * w)
@@ -346,6 +410,7 @@ def draw_finger_keys(frame, landmarks, finger_down):
 
 
 def draw_face(frame, face_result):
+    """Draw the face-mesh dots and outline the lips."""
     h, w = frame.shape[:2]
     for face_landmarks in face_result.face_landmarks:
         pts = [(int(p.x * w), int(p.y * h)) for p in face_landmarks]
@@ -357,6 +422,7 @@ def draw_face(frame, face_result):
 
 
 def nearest_vowel(f1, f2):
+    """Closest reference vowel to the current (F1, F2). Display only."""
     best, best_d = "?", 1e18
     for name, (rf1, rf2) in VOWEL_REF.items():
         d = ((f1 - rf1) / 600.0) ** 2 + ((f2 - rf2) / 1500.0) ** 2
@@ -368,24 +434,29 @@ def nearest_vowel(f1, f2):
 def main():
     synth = FormantSynth(SAMPLE_RATE)
 
-    # 平滑后的归一化控制量
-    sm_dist = 0.0    # 两手距离 -> 音色明暗
-    sm_open = 0.0    # 下巴张开 -> F1
-    sm_mouth = 0.5   # 咧嘴/圆唇 -> F2
+    # Smoothed normalised control values (one-pole low-pass on raw inputs).
+    sm_dist = 0.0    # hand distance -> brightness
+    sm_open = 0.0    # jaw open      -> F1
+    sm_mouth = 0.5   # smile/pucker  -> F2
 
-    # 手指键盘状态（每根手指对应一个 voice）
+    # Finger-keyboard state (one voice per finger).
     finger_down = [False] * 5
 
-    # 预设切换去抖
+    # Preset-switch debounce.
     pending_preset = synth.preset
     pending_preset_frames = 0
 
     cap = cv2.VideoCapture(0)
+    # Keep the camera-driver buffer at 1 so read() always returns the freshest
+    # frame instead of replaying stale ones. This is one of the largest
+    # invisible sources of perceived latency.
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     stream = sd.OutputStream(
         samplerate=SAMPLE_RATE,
         blocksize=BLOCK_SIZE,
         channels=1,
         dtype="float32",
+        latency="low",          # ask the driver for the smallest buffer
         callback=synth.callback,
     )
 
@@ -393,14 +464,16 @@ def main():
     face_lm = vision.FaceLandmarker.create_from_options(face_options)
 
     with gesture_rec, face_lm, stream:
-        print("和弦合成器：左手 5 指弹音（同时弯多根 = 和弦），"
-              "右手 ✋=pad ✊=key，两手距离控音色。按 q 退出。")
+        print("Polyphonic finger synth: left hand plays 5 notes "
+              "(multiple bent = chord); right hand picks timbre "
+              "(palm=pad, fist=bell, V=glass, point=drone); "
+              "two-hand distance controls brightness. Press q to quit.")
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            frame = cv2.flip(frame, 1)  # 镜像
+            frame = cv2.flip(frame, 1)  # mirror so labels match the user's view
             timestamp = int(time.time() * 1000)
             rgb = mp.Image(
                 image_format=mp.ImageFormat.SRGB,
@@ -410,9 +483,9 @@ def main():
             gesture_result = gesture_rec.recognize_for_video(rgb, timestamp)
             face_result = face_lm.detect_for_video(rgb, timestamp)
 
-            # ---- 分配两只手：左手 = 键盘手，右手 = 表达/手势手 ----
-            kb_hand = None    # 左手：5 指键盘
-            expr_hand = None  # 右手：与左手的距离 -> 音色明暗
+            # ---- Split hands: left = keyboard, right = expression / gesture ----
+            kb_hand = None       # left hand: 5-finger keyboard
+            expr_hand = None     # right hand: distance to kb_hand -> brightness
             expr_gesture = "None"
             for i in range(len(gesture_result.hand_landmarks)):
                 label = gesture_result.handedness[i][0].category_name
@@ -425,7 +498,7 @@ def main():
                     if gs:
                         expr_gesture = gs[0].category_name
 
-            # ---- 右手手势 -> 切换音色（带去抖）----
+            # ---- Right-hand gesture -> preset switch (debounced) ----
             target_preset = GESTURE_TO_PRESET.get(expr_gesture)
             if target_preset is None or target_preset == synth.preset:
                 pending_preset_frames = 0
@@ -440,7 +513,7 @@ def main():
                     synth.apply_preset(pending_preset)
                     pending_preset_frames = 0
 
-            # ---- 左手：每根手指弯曲 -> 对应 voice，弯着就一直响 ----
+            # ---- Left hand: per-finger curl -> per-voice note_on / note_off ----
             cur_ratios = [1.0] * 5
             if kb_hand is not None:
                 cur_ratios = finger_curl_ratios(kb_hand)
@@ -455,13 +528,13 @@ def main():
                 draw_hand(frame, kb_hand, (255, 0, 255))
                 draw_finger_keys(frame, kb_hand, finger_down)
             else:
-                # 键盘手丢失：所有手指释放（不留挂着的音）
+                # Lost the left hand: release everything (no stuck notes).
                 for i in range(5):
                     if finger_down[i]:
                         finger_down[i] = False
                         synth.note_off(i)
 
-            # ---- 两手水平距离 -> 音色明暗（调制深度 MOD_INDEX）----
+            # ---- Two-hand horizontal distance -> brightness (MOD_INDEX) ----
             hand_dist = 0.0
             if kb_hand is not None and expr_hand is not None:
                 hand_dist = abs(kb_hand[0].x - expr_hand[0].x)
@@ -472,15 +545,16 @@ def main():
                     MOD_INDEX_MIN + sm_dist * (MOD_INDEX_MAX - MOD_INDEX_MIN)
                 )
                 draw_hand(frame, expr_hand, (255, 128, 0))
+                # Draw a wrist-to-wrist line as a visible "distance" cue.
                 h, w = frame.shape[:2]
                 kw = (int(kb_hand[0].x * w), int(kb_hand[0].y * h))
                 ew = (int(expr_hand[0].x * w), int(expr_hand[0].y * h))
                 cv2.line(frame, kw, ew, (0, 255, 255), 2)
             elif expr_hand is not None:
-                # 没看见左手但有右手：也画出右手（手势识别还是有效的）
+                # Right hand alone: still draw it (gestures still work).
                 draw_hand(frame, expr_hand, (255, 128, 0))
 
-            # ---- 嘴形 -> 共振峰 F1 / F2 ----
+            # ---- Mouth shape -> formants F1 / F2 ----
             vowel = "?"
             if face_result.face_landmarks and face_result.face_blendshapes:
                 bs = {c.category_name: c.score
@@ -501,7 +575,7 @@ def main():
                 vowel = nearest_vowel(synth.target_f1, synth.target_f2)
                 draw_face(frame, face_result)
 
-            # ---- 终端输出 ----
+            # ---- Terminal log ----
             fstr = "".join(str(i + 1) if d else "-"
                            for i, d in enumerate(finger_down))
             rstr = " ".join(f"{r:.2f}" for r in cur_ratios)
@@ -509,15 +583,15 @@ def main():
             chord_str = "+".join(f"{f:.0f}" for f in chord) if chord else "-"
             gate_str = "ON " if synth.any_gate else "off"
             print(
-                f"preset={synth.preset:3s}({expr_gesture})  "
+                f"preset={synth.preset:5s}({expr_gesture})  "
                 f"curl[{rstr}]  fingers[{fstr}]  "
                 f"chord=[{chord_str}]Hz  "
                 f"bright={synth.target_mod_index:4.1f}(dist={hand_dist:.2f})  "
                 f"gate={gate_str}  /{vowel}/"
             )
 
-            # ---- 画面叠加文字 ----
-            preset_color = (0, 255, 180) if synth.preset == "pad" else (180, 220, 255)
+            # ---- On-screen overlay ----
+            preset_color = PRESET_COLORS.get(synth.preset, (200, 200, 200))
             cv2.putText(
                 frame,
                 f"preset {synth.preset}  fingers [{fstr}]  "
