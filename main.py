@@ -12,10 +12,10 @@ Controls:
   Curl / extend a finger     -> that note's note-on / note-off (held while bent)
   Curl multiple fingers      -> chord (multiple voices sound at once)
   Right hand gesture         -> switch timbre preset:
-      Open_Palm  (Open Palm) -> pad    (warm choir)
-      Closed_Fist (Fist)     -> bell   (crystalline shimmer)
-      Victory     (Victory)  -> glass  (bowed glass bowls)
-      Pointing_Up (Point)    -> drone  (vast slow swell)
+      Open_Palm  (Open Palm) -> pad    (slow alien choir pad)
+      Closed_Fist (Fist)     -> key    (xenon plucked key)
+      Victory     (Victory)  -> glass  (frozen harmonic glass)
+      Pointing_Up (Point)    -> drone  (deep atmospheric drone)
   Horizontal distance between the two hands -> timbre brightness (MOD_INDEX)
   Jaw open      (Face)       -> formant F1
   Smile / pucker (Face)      -> formant F2
@@ -55,44 +55,83 @@ MASTER_AMP = 0.2    # master volume. No soft-clipper: keep this small enough
 # (see DIST_MIN/MAX below) and feeds every voice's FM depth.
 MOD_INDEX_MIN, MOD_INDEX_MAX = 0.0, 15.0
 
-# ===== Timbre presets (4 ethereal flavours) =====
+# ===== Timbre presets (4 alien / atmospheric flavours) =====
 # Switching a preset rewrites every voice's ADSR parameters and the shared
-# mod_ratio in one shot. attack/decay/release are seconds, sustain is 0..1.
+# voice colour in one shot. attack/decay/release are seconds, sustain is 0..1.
 # mod_ratio = modulator freq / carrier freq.
-#   1.0   -> in-tune with the carrier, harmonic spectrum, vocal/pad-like
-#   1.5   -> perfect fifth above, open / wide
-#   2.0   -> octave above, brighter but still harmonic
-#   3.5   -> non-integer, inharmonic, classic FM-bell sparkle
+# fm_scale multiplies hand-distance brightness per preset.
+# second_harmonic / sub_mix add fixed layers so the four presets do not all
+# feel like the same sine-FM patch with different envelopes.
 PRESETS = {
     "pad": {
-        "amp_attack": 0.60, "amp_decay": 1.50, "amp_sustain": 0.75, "amp_release": 3.00,
-        "mod_attack": 1.20, "mod_decay": 0.80, "mod_sustain": 0.80, "mod_release": 2.50,
-        "mod_ratio":  1.0,
+        "amp_attack": 1.80, "amp_decay": 2.50, "amp_sustain": 0.82, "amp_release": 5.50,
+        "mod_attack": 2.80, "mod_decay": 2.00, "mod_sustain": 0.38, "mod_release": 4.50,
+        "mod_ratio": 0.50,
+        "fm_scale": 0.42,
+        "second_harmonic": 0.18,
+        "sub_mix": 0.08,
+        "tremolo_rate": 0.09,
+        "tremolo_depth": 0.12,
+        "dry_mix": 0.10,
+        "f1_mix": 0.55,
+        "f2_mix": 0.45,
+        "filter_q": 5.0,
+        "gain": 0.82,
     },
-    "bell": {
-        "amp_attack": 0.003, "amp_decay": 4.00, "amp_sustain": 0.00, "amp_release": 2.00,
-        "mod_attack": 0.003, "mod_decay": 2.00, "mod_sustain": 0.00, "mod_release": 2.00,
-        "mod_ratio":  3.5,
+    "key": {
+        "amp_attack": 0.006, "amp_decay": 0.65, "amp_sustain": 0.08, "amp_release": 1.15,
+        "mod_attack": 0.002, "mod_decay": 0.45, "mod_sustain": 0.00, "mod_release": 0.75,
+        "mod_ratio": 2.414,
+        "fm_scale": 1.15,
+        "second_harmonic": 0.35,
+        "sub_mix": 0.00,
+        "tremolo_rate": 0.0,
+        "tremolo_depth": 0.0,
+        "dry_mix": 0.20,
+        "f1_mix": 0.38,
+        "f2_mix": 0.62,
+        "filter_q": 6.5,
+        "gain": 0.62,
     },
     "glass": {
-        "amp_attack": 0.40, "amp_decay": 1.20, "amp_sustain": 0.60, "amp_release": 3.00,
-        "mod_attack": 1.50, "mod_decay": 0.80, "mod_sustain": 0.70, "mod_release": 2.50,
-        "mod_ratio":  2.0,
+        "amp_attack": 0.12, "amp_decay": 1.80, "amp_sustain": 0.42, "amp_release": 4.00,
+        "mod_attack": 0.03, "mod_decay": 3.00, "mod_sustain": 0.20, "mod_release": 3.20,
+        "mod_ratio": 3.01,
+        "fm_scale": 0.80,
+        "second_harmonic": 0.12,
+        "sub_mix": 0.00,
+        "tremolo_rate": 0.23,
+        "tremolo_depth": 0.08,
+        "dry_mix": 0.05,
+        "f1_mix": 0.28,
+        "f2_mix": 0.72,
+        "filter_q": 8.0,
+        "gain": 0.65,
     },
     "drone": {
-        "amp_attack": 1.50, "amp_decay": 2.00, "amp_sustain": 0.90, "amp_release": 5.00,
-        "mod_attack": 3.00, "mod_decay": 1.50, "mod_sustain": 1.00, "mod_release": 5.00,
-        "mod_ratio":  1.5,
+        "amp_attack": 4.50, "amp_decay": 3.00, "amp_sustain": 0.95, "amp_release": 8.00,
+        "mod_attack": 6.00, "mod_decay": 2.00, "mod_sustain": 0.72, "mod_release": 8.00,
+        "mod_ratio": 1.333,
+        "fm_scale": 0.55,
+        "second_harmonic": 0.08,
+        "sub_mix": 0.45,
+        "tremolo_rate": 0.04,
+        "tremolo_depth": 0.18,
+        "dry_mix": 0.12,
+        "f1_mix": 0.70,
+        "f2_mix": 0.30,
+        "filter_q": 3.2,
+        "gain": 0.70,
     },
 }
 DEFAULT_PRESET = "pad"
 
 # Right-hand gesture -> preset name. Anything else leaves the preset unchanged.
 GESTURE_TO_PRESET = {
-    "Open_Palm":   "pad",     # open palm  -> warm pad
-    "Closed_Fist": "bell",    # fist       -> bell strike
-    "Victory":     "glass",   # peace sign -> bowed glass
-    "Pointing_Up": "drone",   # index up   -> vast drone
+    "Open_Palm":   "pad",     # open palm  -> slow alien choir pad
+    "Closed_Fist": "key",     # fist       -> xenon plucked key
+    "Victory":     "glass",   # peace sign -> frozen harmonic glass
+    "Pointing_Up": "drone",   # index up   -> deep atmospheric drone
 }
 # Same gesture must be stable for N frames before the preset actually switches,
 # to avoid flicker on momentary mis-classification.
@@ -101,7 +140,7 @@ PRESET_DEBOUNCE_FRAMES = 5
 # HUD tint per preset (BGR for cv2.putText).
 PRESET_COLORS = {
     "pad":   (180, 255, 200),  # mint
-    "bell":  (255, 220, 180),  # icy blue
+    "key":   (255, 220, 180),  # icy blue
     "glass": (220, 255, 220),  # pale aqua
     "drone": (255, 180, 220),  # lavender
 }
@@ -124,7 +163,8 @@ CURL_OFF = [0.75, 1.00, 1.00, 1.00, 1.00]
 F1_MIN, F1_MAX = 200.0, 1600.0
 F2_MIN, F2_MAX = 500.0, 3200.0
 
-# Resonator quality factor (fixed). Higher Q = narrower, more "vowel-like".
+# Default resonator quality factor. Presets can override this; higher Q =
+# narrower, more "vowel-like".
 FILTER_Q = 4.0
 
 # Horizontal distance between the two wrists (normalised image coords) mapped
@@ -219,6 +259,8 @@ class Voice:
         self.gate = False
         self._phase_c = 0.0
         self._phase_m = 0.0
+        self._phase_sub = 0.0
+        self._phase_lfo = 0.0
         # ADSR params get overwritten immediately by apply_preset(); these
         # initial values just have to be non-degenerate.
         self.amp_env = ADSR(sample_rate, 0.5, 1.5, 0.7, 2.5)
@@ -231,20 +273,48 @@ class Voice:
     def note_off(self):
         self.gate = False
 
-    def render(self, frames, mod_index, mod_ratio):
+    def render(self, frames, mod_index, preset):
         """Render this voice's FM signal * amp_env for one block (length=frames)."""
         amp_env = self.amp_env.process(frames, self.gate)
         mod_env = self.mod_env.process(frames, self.gate)
+        mod_ratio = preset["mod_ratio"]
+        fm_depth = mod_index * preset["fm_scale"]
         # Frequency is constant within a block, so plain arithmetic is enough
         # (no need for cumsum, which we'd only need for varying freq).
         n = np.arange(1, frames + 1)
         dphi_c = 2.0 * np.pi * self.freq / self.sr
         dphi_m = 2.0 * np.pi * self.freq * mod_ratio / self.sr
+        dphi_sub = 0.5 * dphi_c
         phase_c = self._phase_c + dphi_c * n
         phase_m = self._phase_m + dphi_m * n
+        phase_sub = self._phase_sub + dphi_sub * n
         self._phase_c = phase_c[-1] % (2.0 * np.pi)
         self._phase_m = phase_m[-1] % (2.0 * np.pi)
-        source = np.sin(phase_c + (mod_index * mod_env) * np.sin(phase_m))
+        self._phase_sub = phase_sub[-1] % (2.0 * np.pi)
+
+        fm = fm_depth * mod_env * np.sin(phase_m)
+        source = np.sin(phase_c + fm)
+
+        second_harmonic = preset["second_harmonic"]
+        if second_harmonic:
+            source += second_harmonic * np.sin(2.0 * phase_c + 0.55 * fm)
+
+        sub_mix = preset["sub_mix"]
+        if sub_mix:
+            source += sub_mix * np.sin(phase_sub)
+
+        normaliser = 1.0 + abs(second_harmonic) + abs(sub_mix)
+        source /= normaliser
+
+        tremolo_depth = preset["tremolo_depth"]
+        tremolo_rate = preset["tremolo_rate"]
+        if tremolo_depth and tremolo_rate:
+            dphi_lfo = 2.0 * np.pi * tremolo_rate / self.sr
+            phase_lfo = self._phase_lfo + dphi_lfo * n
+            self._phase_lfo = phase_lfo[-1] % (2.0 * np.pi)
+            lfo = 0.5 + 0.5 * np.sin(phase_lfo)
+            source *= (1.0 - tremolo_depth) + tremolo_depth * lfo
+
         return source * amp_env
 
 
@@ -252,8 +322,8 @@ class FormantSynth:
     """N voices summed -> two formant band-pass filters -> output.
 
     Several voices gated at once = a chord; each finger drives exactly one voice.
-    F1/F2 (vowel), mod_index (brightness) and mod_ratio (timbre) are shared
-    across all voices.
+    F1/F2 (vowel), mod_index (brightness) and the active timbre preset are
+    shared across all voices.
     """
 
     def __init__(self, sample_rate, num_voices=5):
@@ -266,9 +336,9 @@ class FormantSynth:
         self.f2 = 1500.0; self.target_f2 = 1500.0
         self.mod_index = MOD_INDEX_MIN; self.target_mod_index = MOD_INDEX_MIN
 
-        # Active preset (sets ADSR + mod_ratio).
+        # Active preset (sets ADSR and voice colour).
         self.preset = None
-        self.mod_ratio = 1.0
+        self.preset_params = PRESETS[DEFAULT_PRESET]
         self.apply_preset(DEFAULT_PRESET)
 
         # Per-filter state (delay units used by lfilter to keep continuity
@@ -284,7 +354,7 @@ class FormantSynth:
         self.voices[voice_idx].note_off()
 
     def apply_preset(self, name):
-        """Switch timbre: overwrite every voice's ADSR params and mod_ratio."""
+        """Switch timbre: overwrite every voice's ADSR params and colour."""
         p = PRESETS[name]
         for v in self.voices:
             v.amp_env.attack  = p["amp_attack"]
@@ -295,7 +365,7 @@ class FormantSynth:
             v.mod_env.decay   = p["mod_decay"]
             v.mod_env.sustain = p["mod_sustain"]
             v.mod_env.release = p["mod_release"]
-        self.mod_ratio = p["mod_ratio"]
+        self.preset_params = p
         self.preset = name
 
     @property
@@ -314,12 +384,14 @@ class FormantSynth:
 
         # 1. Render every voice and sum the FM sources.
         mixed_source = np.zeros(frames, dtype=np.float64)
+        preset = self.preset_params
         for v in self.voices:
-            mixed_source += v.render(frames, self.mod_index, self.mod_ratio)
+            mixed_source += v.render(frames, self.mod_index, preset)
 
         # 2. Two formant band-pass resonators, shared across voices.
-        b1, a1 = iirpeak(self.f1, FILTER_Q, fs=self.sr)
-        b2, a2 = iirpeak(self.f2, FILTER_Q, fs=self.sr)
+        q = preset.get("filter_q", FILTER_Q)
+        b1, a1 = iirpeak(self.f1, q, fs=self.sr)
+        b2, a2 = iirpeak(self.f2, q, fs=self.sr)
         y1, self._zi1 = lfilter(b1, a1, mixed_source, zi=self._zi1)
         y2, self._zi2 = lfilter(b2, a2, mixed_source, zi=self._zi2)
 
@@ -327,8 +399,12 @@ class FormantSynth:
         # distortion). MASTER_AMP is kept low so normal play stays under ±1;
         # the np.clip below is just a hard safety net for extreme worst-case
         # spikes and shouldn't trigger in everyday use.
-        mixed = 0.5 * y1 + 0.5 * y2
-        out = MASTER_AMP * mixed
+        mixed = (
+            preset["f1_mix"] * y1
+            + preset["f2_mix"] * y2
+            + preset["dry_mix"] * mixed_source
+        )
+        out = MASTER_AMP * preset["gain"] * mixed
         np.clip(out, -0.99, 0.99, out=out)
         outdata[:, 0] = out.astype(np.float32)
 
@@ -466,7 +542,7 @@ def main():
     with gesture_rec, face_lm, stream:
         print("Polyphonic finger synth: left hand plays 5 notes "
               "(multiple bent = chord); right hand picks timbre "
-              "(palm=pad, fist=bell, V=glass, point=drone); "
+              "(palm=pad, fist=key, V=glass, point=drone); "
               "two-hand distance controls brightness. Press q to quit.")
         while cap.isOpened():
             ret, frame = cap.read()

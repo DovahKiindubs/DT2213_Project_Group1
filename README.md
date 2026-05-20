@@ -61,10 +61,10 @@ Press **q** in the video window to quit.
 
 | Gesture | Preset | Character |
 |---|---|---|
-| ✋ Open palm     | **pad**   | Warm choir, gentle swell |
-| ✊ Fist          | **bell**  | Crystalline strike, long ringing decay |
-| ✌️ Peace sign    | **glass** | Bowed glass bowls, sustained and bright |
-| ☝️ Index up      | **drone** | Vast slow drone, very long fade-in |
+| ✋ Open palm     | **pad**   | Slow alien choir pad, soft shimmer |
+| ✊ Fist          | **key**   | Xenon plucked key, bright inharmonic attack |
+| ✌️ Peace sign    | **glass** | Frozen harmonic glass, high resonant bloom |
+| ☝️ Index up      | **drone** | Deep atmospheric drone, low sub-octave body |
 
 The same gesture must be held for 5 frames before the preset actually
 switches (to ignore brief mis-classifications). The preset name tint in
@@ -97,21 +97,6 @@ matter most:
 - **`dist=...`** — the horizontal distance between the wrists. Watch it
   with your hands together and with your hands wide apart, then adjust
   `DIST_MIN, DIST_MAX` accordingly.
-
-## Troubleshooting
-
-- **No sound / wrong output device**: pick the right output in your OS
-  sound settings, then restart the program.
-- **Black video window**: another app (Zoom, Teams, …) is holding the
-  camera. Close it and try again.
-- **Clicks / distortion in the audio**: lower `MASTER_AMP` at the top of
-  `main.py` (it is `0.2` by default; try `0.15`).
-- **Latency feels high**: try `BLOCK_SIZE = 128`; if you start hearing
-  underrun clicks, go back to `256`. Note that the camera frame rate
-  (typically 30 fps) imposes a hard floor on trigger latency that can't
-  be removed in software.
-- **mediapipe fails to install**: make sure Python is 3.10–3.12; switch
-  versions otherwise. On Windows you may need the Visual C++ Runtime.
 
 ## Project layout
 
