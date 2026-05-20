@@ -42,7 +42,7 @@ Press **q** in the video window to quit.
 
 ## How to play
 
-### Left hand = 5-finger keyboard
+### Right hand = 5-finger keyboard
 
 | Finger | Note |
 |---|---|
@@ -57,7 +57,7 @@ Press **q** in the video window to quit.
   current timbre's ADSR release
 - **Bend several fingers at once** → those notes stack into a chord
 
-### Right hand gesture = pick the timbre
+### Left hand gesture = pick the timbre
 
 | Gesture | Preset | Character |
 |---|---|---|

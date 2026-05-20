@@ -46,9 +46,9 @@ SAMPLE_RATE = 44100
 # Smaller block -> shorter trigger-to-sound latency
 # Too small risks underruns (audible clicks). 256 = ~5.8 ms, 128 = ~2.9 ms.
 BLOCK_SIZE = 256
-MASTER_AMP = 0.2    # master volume. No soft-clipper: keep this small enough
-                    # that a 5-voice bright chord stays mostly under ±1, so the
-                    # output is fully linear (no waveshaping distortion).
+MASTER_AMP = 0.2  # master volume. No soft-clipper: keep this small enough
+# that a 5-voice bright chord stays mostly under ±1, so the
+# output is fully linear (no waveshaping distortion).
 
 # ===== FM global parameters =====
 # Modulation index range; the actual value is controlled by hand distance
@@ -64,8 +64,14 @@ MOD_INDEX_MIN, MOD_INDEX_MAX = 0.0, 15.0
 # feel like the same sine-FM patch with different envelopes.
 PRESETS = {
     "pad": {
-        "amp_attack": 1.80, "amp_decay": 2.50, "amp_sustain": 0.82, "amp_release": 5.50,
-        "mod_attack": 2.80, "mod_decay": 2.00, "mod_sustain": 0.38, "mod_release": 4.50,
+        "amp_attack": 1.80,
+        "amp_decay": 2.50,
+        "amp_sustain": 0.82,
+        "amp_release": 5.50,
+        "mod_attack": 2.80,
+        "mod_decay": 2.00,
+        "mod_sustain": 0.38,
+        "mod_release": 4.50,
         "mod_ratio": 0.50,
         "fm_scale": 0.42,
         "second_harmonic": 0.18,
@@ -79,23 +85,41 @@ PRESETS = {
         "gain": 0.82,
     },
     "key": {
-        "amp_attack": 0.006, "amp_decay": 0.65, "amp_sustain": 0.08, "amp_release": 1.15,
-        "mod_attack": 0.002, "mod_decay": 0.45, "mod_sustain": 0.00, "mod_release": 0.75,
-        "mod_ratio": 2.414,
-        "fm_scale": 1.15,
-        "second_harmonic": 0.35,
-        "sub_mix": 0.00,
-        "tremolo_rate": 0.0,
-        "tremolo_depth": 0.0,
-        "dry_mix": 0.20,
-        "f1_mix": 0.38,
-        "f2_mix": 0.62,
-        "filter_q": 6.5,
-        "gain": 0.62,
+        # Ethereal, fully harmonic key. Soft pluck onset that blooms into a
+        # long shimmering tail; no inharmonic clang.
+        "amp_attack": 0.012,
+        "amp_decay": 1.20,
+        "amp_sustain": 0.22,
+        "amp_release": 3.50,
+        # Brightness blooms in quickly then settles to a clean, soft body.
+        "mod_attack": 0.008,
+        "mod_decay": 1.10,
+        "mod_sustain": 0.06,
+        "mod_release": 2.20,
+        # Integer mod_ratio = pure harmonic spectrum (octave overtones).
+        # This is the key change vs the old metallic 2.414 ratio.
+        "mod_ratio": 2.0,
+        "fm_scale": 0.50,
+        "second_harmonic": 0.18,
+        "sub_mix": 0.20,
+        # Subtle slow shimmer for the ethereal feel.
+        "tremolo_rate": 0.18,
+        "tremolo_depth": 0.07,
+        "dry_mix": 0.10,
+        "f1_mix": 0.48,
+        "f2_mix": 0.52,
+        "filter_q": 5.5,
+        "gain": 0.68,
     },
     "glass": {
-        "amp_attack": 0.12, "amp_decay": 1.80, "amp_sustain": 0.42, "amp_release": 4.00,
-        "mod_attack": 0.03, "mod_decay": 3.00, "mod_sustain": 0.20, "mod_release": 3.20,
+        "amp_attack": 0.12,
+        "amp_decay": 1.80,
+        "amp_sustain": 0.42,
+        "amp_release": 4.00,
+        "mod_attack": 0.03,
+        "mod_decay": 3.00,
+        "mod_sustain": 0.20,
+        "mod_release": 3.20,
         "mod_ratio": 3.01,
         "fm_scale": 0.80,
         "second_harmonic": 0.12,
@@ -109,8 +133,14 @@ PRESETS = {
         "gain": 0.65,
     },
     "drone": {
-        "amp_attack": 4.50, "amp_decay": 3.00, "amp_sustain": 0.95, "amp_release": 8.00,
-        "mod_attack": 6.00, "mod_decay": 2.00, "mod_sustain": 0.72, "mod_release": 8.00,
+        "amp_attack": 4.50,
+        "amp_decay": 3.00,
+        "amp_sustain": 0.95,
+        "amp_release": 8.00,
+        "mod_attack": 6.00,
+        "mod_decay": 2.00,
+        "mod_sustain": 0.72,
+        "mod_release": 8.00,
         "mod_ratio": 1.333,
         "fm_scale": 0.55,
         "second_harmonic": 0.08,
@@ -128,10 +158,10 @@ DEFAULT_PRESET = "pad"
 
 # Right-hand gesture -> preset name. Anything else leaves the preset unchanged.
 GESTURE_TO_PRESET = {
-    "Open_Palm":   "pad",     # open palm  -> slow alien choir pad
-    "Closed_Fist": "key",     # fist       -> xenon plucked key
-    "Victory":     "glass",   # peace sign -> frozen harmonic glass
-    "Pointing_Up": "drone",   # index up   -> deep atmospheric drone
+    "Open_Palm": "pad",  # open palm  -> slow alien choir pad
+    "Closed_Fist": "key",  # fist       -> xenon plucked key
+    "Victory": "glass",  # peace sign -> frozen harmonic glass
+    "Pointing_Up": "drone",  # index up   -> deep atmospheric drone
 }
 # Same gesture must be stable for N frames before the preset actually switches,
 # to avoid flicker on momentary mis-classification.
@@ -139,16 +169,16 @@ PRESET_DEBOUNCE_FRAMES = 5
 
 # HUD tint per preset (BGR for cv2.putText).
 PRESET_COLORS = {
-    "pad":   (180, 255, 200),  # mint
-    "key":   (255, 220, 180),  # icy blue
+    "pad": (180, 255, 200),  # mint
+    "key": (255, 220, 180),  # icy blue
     "glass": (220, 255, 220),  # pale aqua
     "drone": (255, 180, 220),  # lavender
 }
 
 # ===== Finger keyboard =====
 PENTATONIC_STEPS = [0, 2, 4, 7, 9]  # major pentatonic semitone offsets
-SCALE_ROOT_HZ = 65.41               # C2 -- lowest possible note
-KEYBOARD_OCTAVE = 1                 # which octave (0-based) the 5 notes sit in
+SCALE_ROOT_HZ = 65.41  # C2 -- lowest possible note
+KEYBOARD_OCTAVE = 1  # which octave (0-based) the 5 notes sit in
 
 # Per-finger curl thresholds with hysteresis.
 # Curl ratio < CURL_ON  -> finger is now bent (note-on).
@@ -332,9 +362,12 @@ class FormantSynth:
 
         # Shared formants + modulation index. Vision thread writes target_*;
         # the callback smooths the current value towards target every block.
-        self.f1 = 600.0; self.target_f1 = 600.0
-        self.f2 = 1500.0; self.target_f2 = 1500.0
-        self.mod_index = MOD_INDEX_MIN; self.target_mod_index = MOD_INDEX_MIN
+        self.f1 = 600.0
+        self.target_f1 = 600.0
+        self.f2 = 1500.0
+        self.target_f2 = 1500.0
+        self.mod_index = MOD_INDEX_MIN
+        self.target_mod_index = MOD_INDEX_MIN
 
         # Active preset (sets ADSR and voice colour).
         self.preset = None
@@ -357,12 +390,12 @@ class FormantSynth:
         """Switch timbre: overwrite every voice's ADSR params and colour."""
         p = PRESETS[name]
         for v in self.voices:
-            v.amp_env.attack  = p["amp_attack"]
-            v.amp_env.decay   = p["amp_decay"]
+            v.amp_env.attack = p["amp_attack"]
+            v.amp_env.decay = p["amp_decay"]
             v.amp_env.sustain = p["amp_sustain"]
             v.amp_env.release = p["amp_release"]
-            v.mod_env.attack  = p["mod_attack"]
-            v.mod_env.decay   = p["mod_decay"]
+            v.mod_env.attack = p["mod_attack"]
+            v.mod_env.decay = p["mod_decay"]
             v.mod_env.sustain = p["mod_sustain"]
             v.mod_env.release = p["mod_release"]
         self.preset_params = p
@@ -425,19 +458,74 @@ face_options = vision.FaceLandmarkerOptions(
 )
 
 HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),         # thumb
-    (0, 5), (5, 6), (6, 7), (7, 8),         # index
-    (5, 9), (9, 10), (10, 11), (11, 12),    # middle
-    (9, 13), (13, 14), (14, 15), (15, 16),  # ring
-    (13, 17), (17, 18), (18, 19), (19, 20), # pinky
-    (0, 17),                                # palm base
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 4),  # thumb
+    (0, 5),
+    (5, 6),
+    (6, 7),
+    (7, 8),  # index
+    (5, 9),
+    (9, 10),
+    (10, 11),
+    (11, 12),  # middle
+    (9, 13),
+    (13, 14),
+    (14, 15),
+    (15, 16),  # ring
+    (13, 17),
+    (17, 18),
+    (18, 19),
+    (19, 20),  # pinky
+    (0, 17),  # palm base
 ]
 
 # Outer / inner lip ring landmark indices in MediaPipe Face Mesh.
-LIPS_OUTER = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375,
-              291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
-LIPS_INNER = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
-              308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
+LIPS_OUTER = [
+    61,
+    146,
+    91,
+    181,
+    84,
+    17,
+    314,
+    405,
+    321,
+    375,
+    291,
+    409,
+    270,
+    269,
+    267,
+    0,
+    37,
+    39,
+    40,
+    185,
+]
+LIPS_INNER = [
+    78,
+    95,
+    88,
+    178,
+    87,
+    14,
+    317,
+    402,
+    318,
+    324,
+    308,
+    415,
+    310,
+    311,
+    312,
+    13,
+    82,
+    81,
+    80,
+    191,
+]
 
 
 def finger_curl_ratios(landmarks):
@@ -450,9 +538,11 @@ def finger_curl_ratios(landmarks):
     the thumb folds across the palm rather than toward the wrist.
     Distance-based metrics keep working under hand rotation.
     """
+
     def dist(a, b):
-        return np.hypot(landmarks[a].x - landmarks[b].x,
-                        landmarks[a].y - landmarks[b].y)
+        return np.hypot(
+            landmarks[a].x - landmarks[b].x, landmarks[a].y - landmarks[b].y
+        )
 
     ratios = []
     base = dist(2, 9)
@@ -481,8 +571,15 @@ def draw_finger_keys(frame, landmarks, finger_down):
         y = int(landmarks[tip].y * h)
         color = (0, 140, 255) if finger_down[i] else (200, 200, 200)
         cv2.circle(frame, (x, y), 9, color, -1)
-        cv2.putText(frame, str(i + 1), (x - 5, y + 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (30, 30, 30), 2)
+        cv2.putText(
+            frame,
+            str(i + 1),
+            (x - 5, y + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (30, 30, 30),
+            2,
+        )
 
 
 def draw_face(frame, face_result):
@@ -511,9 +608,9 @@ def main():
     synth = FormantSynth(SAMPLE_RATE)
 
     # Smoothed normalised control values (one-pole low-pass on raw inputs).
-    sm_dist = 0.0    # hand distance -> brightness
-    sm_open = 0.0    # jaw open      -> F1
-    sm_mouth = 0.5   # smile/pucker  -> F2
+    sm_dist = 0.0  # hand distance -> brightness
+    sm_open = 0.0  # jaw open      -> F1
+    sm_mouth = 0.5  # smile/pucker  -> F2
 
     # Finger-keyboard state (one voice per finger).
     finger_down = [False] * 5
@@ -532,7 +629,7 @@ def main():
         blocksize=BLOCK_SIZE,
         channels=1,
         dtype="float32",
-        latency="low",          # ask the driver for the smallest buffer
+        latency="low",  # ask the driver for the smallest buffer
         callback=synth.callback,
     )
 
@@ -540,10 +637,12 @@ def main():
     face_lm = vision.FaceLandmarker.create_from_options(face_options)
 
     with gesture_rec, face_lm, stream:
-        print("Polyphonic finger synth: left hand plays 5 notes "
-              "(multiple bent = chord); right hand picks timbre "
-              "(palm=pad, fist=key, V=glass, point=drone); "
-              "two-hand distance controls brightness. Press q to quit.")
+        print(
+            "Polyphonic finger synth: left hand plays 5 notes "
+            "(multiple bent = chord); right hand picks timbre "
+            "(palm=pad, fist=key, V=glass, point=drone); "
+            "two-hand distance controls brightness. Press q to quit."
+        )
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -560,8 +659,8 @@ def main():
             face_result = face_lm.detect_for_video(rgb, timestamp)
 
             # ---- Split hands: left = keyboard, right = expression / gesture ----
-            kb_hand = None       # left hand: 5-finger keyboard
-            expr_hand = None     # right hand: distance to kb_hand -> brightness
+            kb_hand = None  # left hand: 5-finger keyboard
+            expr_hand = None  # right hand: distance to kb_hand -> brightness
             expr_gesture = "None"
             for i in range(len(gesture_result.hand_landmarks)):
                 label = gesture_result.handedness[i][0].category_name
@@ -614,11 +713,12 @@ def main():
             hand_dist = 0.0
             if kb_hand is not None and expr_hand is not None:
                 hand_dist = abs(kb_hand[0].x - expr_hand[0].x)
-                dnorm = float(np.clip(
-                    (hand_dist - DIST_MIN) / (DIST_MAX - DIST_MIN), 0.0, 1.0))
+                dnorm = float(
+                    np.clip((hand_dist - DIST_MIN) / (DIST_MAX - DIST_MIN), 0.0, 1.0)
+                )
                 sm_dist += 0.4 * (dnorm - sm_dist)
-                synth.target_mod_index = (
-                    MOD_INDEX_MIN + sm_dist * (MOD_INDEX_MAX - MOD_INDEX_MIN)
+                synth.target_mod_index = MOD_INDEX_MIN + sm_dist * (
+                    MOD_INDEX_MAX - MOD_INDEX_MIN
                 )
                 draw_hand(frame, expr_hand, (255, 128, 0))
                 # Draw a wrist-to-wrist line as a visible "distance" cue.
@@ -633,15 +733,15 @@ def main():
             # ---- Mouth shape -> formants F1 / F2 ----
             vowel = "?"
             if face_result.face_landmarks and face_result.face_blendshapes:
-                bs = {c.category_name: c.score
-                      for c in face_result.face_blendshapes[0]}
+                bs = {c.category_name: c.score for c in face_result.face_blendshapes[0]}
                 jaw_open = bs.get("jawOpen", 0.0)
-                smile = (bs.get("mouthSmileLeft", 0.0)
-                         + bs.get("mouthSmileRight", 0.0)) / 2.0
+                smile = (
+                    bs.get("mouthSmileLeft", 0.0) + bs.get("mouthSmileRight", 0.0)
+                ) / 2.0
                 pucker = bs.get("mouthPucker", 0.0)
 
                 open_amt = float(np.clip(jaw_open, 0.0, 1.0))
-                mouth_amt = float(np.clip((smile - pucker + 1.0) / 2.0, 0.0, 1.0))
+                mouth_amt = float(np.clip((smile - 2.5 * pucker + 1.0) / 2.0, 0.0, 1.0))
 
                 sm_open += 0.4 * (open_amt - sm_open)
                 sm_mouth += 0.4 * (mouth_amt - sm_mouth)
@@ -652,8 +752,7 @@ def main():
                 draw_face(frame, face_result)
 
             # ---- Terminal log ----
-            fstr = "".join(str(i + 1) if d else "-"
-                           for i, d in enumerate(finger_down))
+            fstr = "".join(str(i + 1) if d else "-" for i, d in enumerate(finger_down))
             rstr = " ".join(f"{r:.2f}" for r in cur_ratios)
             chord = [NOTE_FREQS[i] for i in range(5) if finger_down[i]]
             chord_str = "+".join(f"{f:.0f}" for f in chord) if chord else "-"
