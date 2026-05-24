@@ -16,6 +16,7 @@ Controls:
       Closed_Fist (Fist)     -> key    (xenon plucked key)
       Victory     (Victory)  -> glass  (frozen harmonic glass)
       Pointing_Up (Point)    -> drone  (deep atmospheric drone)
+      Thumb_Up    (Thumb up)  -> rift   (retro low-pass saw bass)
   Horizontal distance between the two hands -> timbre brightness (MOD_INDEX)
   Jaw open      (Face)       -> formant F1
   Smile / pucker (Face)      -> formant F2
@@ -43,24 +44,20 @@ FACE_MODEL = os.path.join(HERE, "face_landmarker.task")
 
 # ===== Audio parameters =====
 SAMPLE_RATE = 44100
-# Smaller block -> shorter trigger-to-sound latency
-# Too small risks underruns (audible clicks). 256 = ~5.8 ms, 128 = ~2.9 ms.
 BLOCK_SIZE = 256
-MASTER_AMP = 0.2  # master volume. No soft-clipper: keep this small enough
-# that a 5-voice bright chord stays mostly under ±1, so the
-# output is fully linear (no waveshaping distortion).
+MASTER_AMP = 0.5
 
 # ===== FM global parameters =====
 # Modulation index range; the actual value is controlled by hand distance
 # (see DIST_MIN/MAX below) and feeds every voice's FM depth.
 MOD_INDEX_MIN, MOD_INDEX_MAX = 0.0, 15.0
 
-# ===== Timbre presets (4 alien / atmospheric flavours) =====
+# ===== Timbre presets (5 alien / atmospheric flavours) =====
 # Switching a preset rewrites every voice's ADSR parameters and the shared
 # voice colour in one shot. attack/decay/release are seconds, sustain is 0..1.
 # mod_ratio = modulator freq / carrier freq.
 # fm_scale multiplies hand-distance brightness per preset.
-# second_harmonic / sub_mix add fixed layers so the four presets do not all
+# second_harmonic / sub_mix / noise_mix add fixed layers so presets do not all
 # feel like the same sine-FM patch with different envelopes.
 PRESETS = {
     "pad": {
@@ -91,18 +88,14 @@ PRESETS = {
         "amp_decay": 1.20,
         "amp_sustain": 0.22,
         "amp_release": 3.50,
-        # Brightness blooms in quickly then settles to a clean, soft body.
         "mod_attack": 0.008,
         "mod_decay": 1.10,
         "mod_sustain": 0.06,
         "mod_release": 2.20,
-        # Integer mod_ratio = pure harmonic spectrum (octave overtones).
-        # This is the key change vs the old metallic 2.414 ratio.
         "mod_ratio": 2.0,
         "fm_scale": 0.50,
         "second_harmonic": 0.18,
         "sub_mix": 0.20,
-        # Subtle slow shimmer for the ethereal feel.
         "tremolo_rate": 0.18,
         "tremolo_depth": 0.07,
         "dry_mix": 0.10,
@@ -153,6 +146,33 @@ PRESETS = {
         "filter_q": 3.2,
         "gain": 0.70,
     },
+    "rift": {
+        # Thumb up: vintage low-pass saw bass, deliberately more Daft Punk /
+        # French-touch than sci-fi drone. Hand distance opens the filter.
+        "amp_attack": 0.010,
+        "amp_decay": 0.38,
+        "amp_sustain": 0.46,
+        "amp_release": 0.95,
+        "mod_attack": 0.006,
+        "mod_decay": 0.32,
+        "mod_sustain": 0.10,
+        "mod_release": 0.70,
+        "mod_ratio": 1.0,
+        "fm_scale": 0.10,
+        "second_harmonic": 0.03,
+        "sub_mix": 0.38,
+        "saw_mix": 1.35,
+        "noise_mix": 0.00,
+        "tremolo_rate": 0.0,
+        "tremolo_depth": 0.0,
+        "dry_mix": 0.78,
+        "f1_mix": 0.16,
+        "f2_mix": 0.06,
+        "filter_q": 1.7,
+        "lowpass_min": 360.0,
+        "lowpass_max": 2800.0,
+        "gain": 0.52,
+    },
 }
 DEFAULT_PRESET = "pad"
 
@@ -162,6 +182,7 @@ GESTURE_TO_PRESET = {
     "Closed_Fist": "key",  # fist       -> xenon plucked key
     "Victory": "glass",  # peace sign -> frozen harmonic glass
     "Pointing_Up": "drone",  # index up   -> deep atmospheric drone
+    "Thumb_Up": "rift",  # thumb up   -> retro low-pass saw bass
 }
 # Same gesture must be stable for N frames before the preset actually switches,
 # to avoid flicker on momentary mis-classification.
@@ -173,6 +194,7 @@ PRESET_COLORS = {
     "key": (255, 220, 180),  # icy blue
     "glass": (220, 255, 220),  # pale aqua
     "drone": (255, 180, 220),  # lavender
+    "rift": (170, 190, 255),  # warm violet
 }
 
 # ===== Finger keyboard =====
@@ -291,6 +313,7 @@ class Voice:
         self._phase_m = 0.0
         self._phase_sub = 0.0
         self._phase_lfo = 0.0
+        self._rng = np.random.default_rng()
         # ADSR params get overwritten immediately by apply_preset(); these
         # initial values just have to be non-degenerate.
         self.amp_env = ADSR(sample_rate, 0.5, 1.5, 0.7, 2.5)
@@ -329,11 +352,22 @@ class Voice:
         if second_harmonic:
             source += second_harmonic * np.sin(2.0 * phase_c + 0.55 * fm)
 
+        saw_mix = preset.get("saw_mix", 0.0)
+        if saw_mix:
+            saw = 2.0 * ((phase_c % (2.0 * np.pi)) / (2.0 * np.pi)) - 1.0
+            source += saw_mix * saw
+
         sub_mix = preset["sub_mix"]
         if sub_mix:
             source += sub_mix * np.sin(phase_sub)
 
-        normaliser = 1.0 + abs(second_harmonic) + abs(sub_mix)
+        noise_mix = preset.get("noise_mix", 0.0)
+        if noise_mix:
+            source += noise_mix * self._rng.uniform(-1.0, 1.0, frames)
+
+        normaliser = (
+            1.0 + abs(second_harmonic) + abs(saw_mix) + abs(sub_mix) + abs(noise_mix)
+        )
         source /= normaliser
 
         tremolo_depth = preset["tremolo_depth"]
@@ -378,6 +412,7 @@ class FormantSynth:
         # across blocks).
         self._zi1 = np.zeros(2)
         self._zi2 = np.zeros(2)
+        self._lp_state = 0.0
 
     # ---- vision-thread API ----
     def note_on(self, voice_idx, freq):
@@ -437,6 +472,21 @@ class FormantSynth:
             + preset["f2_mix"] * y2
             + preset["dry_mix"] * mixed_source
         )
+        if "lowpass_min" in preset:
+            brightness = float(
+                np.clip(
+                    (self.mod_index - MOD_INDEX_MIN) / (MOD_INDEX_MAX - MOD_INDEX_MIN),
+                    0.0,
+                    1.0,
+                )
+            )
+            cutoff = preset["lowpass_min"] + brightness * (
+                preset["lowpass_max"] - preset["lowpass_min"]
+            )
+            alpha = np.exp(-2.0 * np.pi * cutoff / self.sr)
+            for i, sample in enumerate(mixed):
+                self._lp_state = (1.0 - alpha) * sample + alpha * self._lp_state
+                mixed[i] = self._lp_state
         out = MASTER_AMP * preset["gain"] * mixed
         np.clip(out, -0.99, 0.99, out=out)
         outdata[:, 0] = out.astype(np.float32)
@@ -640,7 +690,8 @@ def main():
         print(
             "Polyphonic finger synth: left hand plays 5 notes "
             "(multiple bent = chord); right hand picks timbre "
-            "(palm=pad, fist=key, V=glass, point=drone); "
+            "(palm=pad, fist=key, V=glass, point=drone, "
+            "thumb-up=rift); "
             "two-hand distance controls brightness. Press q to quit."
         )
         while cap.isOpened():

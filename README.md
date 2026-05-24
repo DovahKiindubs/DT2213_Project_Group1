@@ -13,24 +13,6 @@ distance between your hands controls how bright the sound is.
   still ask for permission the first time)
 - macOS / Windows / Linux all work
 
-## Install
-
-```bash
-# 1) Enter the project directory
-cd dt2213_project
-
-# 2) (Recommended) create an isolated virtual environment
-python3 -m venv .venv
-source .venv/bin/activate     # macOS / Linux
-# .venv\Scripts\activate      # Windows PowerShell
-
-# 3) Install dependencies
-pip install -r requirements.txt
-```
-
-> Conda users can do it this way instead:
-> `conda create -n dt2213 python=3.11 -y && conda activate dt2213 && pip install -r requirements.txt`
-
 ## Run
 
 ```bash
@@ -57,7 +39,7 @@ Press **q** in the video window to quit.
   current timbre's ADSR release
 - **Bend several fingers at once** → those notes stack into a chord
 
-### Left hand gesture = pick the timbre
+### Right hand gesture = pick the timbre
 
 | Gesture | Preset | Character |
 |---|---|---|
@@ -65,6 +47,7 @@ Press **q** in the video window to quit.
 | ✊ Fist          | **key**   | Xenon plucked key, bright inharmonic attack |
 | ✌️ Peace sign    | **glass** | Frozen harmonic glass, high resonant bloom |
 | ☝️ Index up      | **drone** | Deep atmospheric drone, low sub-octave body |
+| 👍 Thumb up      | **rift**  | Retro low-pass saw bass, French-touch filter sweep |
 
 The same gesture must be held for 5 frames before the preset actually
 switches (to ignore brief mis-classifications). The preset name tint in
