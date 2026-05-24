@@ -1,5 +1,5 @@
 """
-DT2213 project: left-hand 5-finger keyboard + right-hand gesture preset switch
+DT2213 project: right-hand 5-finger keyboard + left-hand gesture preset switch
 on an FM Formant synthesizer.
 
 Architecture:
@@ -8,20 +8,21 @@ Architecture:
   (mouth shape -> F1/F2), so the whole thing sings vowels like a choir.
 
 Controls:
-  Left hand, 5 fingers       -> 5 pentatonic notes (thumb lowest, pinky highest)
+  Right hand, 5 fingers      -> 5 pentatonic notes (thumb lowest, pinky highest)
   Curl / extend a finger     -> that note's note-on / note-off (held while bent)
   Curl multiple fingers      -> chord (multiple voices sound at once)
-  Right hand gesture         -> switch timbre preset:
+  Left hand gesture          -> switch timbre preset:
       Open_Palm  (Open Palm) -> pad    (slow alien choir pad)
       Closed_Fist (Fist)     -> key    (xenon plucked key)
       Victory     (Victory)  -> glass  (frozen harmonic glass)
       Pointing_Up (Point)    -> drone  (deep atmospheric drone)
       Thumb_Up    (Thumb up)  -> rift   (retro low-pass saw bass)
   Horizontal distance between the two hands -> timbre brightness (MOD_INDEX)
+  Note-hand height relative to timbre hand -> low / mid / high note register
   Jaw open      (Face)       -> formant F1
   Smile / pucker (Face)      -> formant F2
 
-The camera frame is mirrored so left/right hand labels match the user's view.
+The camera frame is mirrored for a natural on-screen playing view.
 Press q to quit.
 """
 
@@ -200,7 +201,7 @@ PRESET_COLORS = {
 # ===== Finger keyboard =====
 PENTATONIC_STEPS = [0, 2, 4, 7, 9]  # major pentatonic semitone offsets
 SCALE_ROOT_HZ = 65.41  # C2 -- lowest possible note
-KEYBOARD_OCTAVE = 1  # which octave (0-based) the 5 notes sit in
+KEYBOARD_OCTAVE = 2  # which octave (0-based) the middle register sits in
 
 # Per-finger curl thresholds with hysteresis.
 # Curl ratio < CURL_ON  -> finger is now bent (note-on).
@@ -224,6 +225,17 @@ FILTER_Q = 4.0
 # Watch the printed `dist=` value to calibrate.
 DIST_MIN, DIST_MAX = 0.15, 0.75
 
+# Note-hand height relative to the timbre-hand wrist selects one of three
+# keyboard registers. Image y grows downward, so negative dy means the note
+# hand is higher.
+REGISTER_LOW_DY = 0.10
+REGISTER_HIGH_DY = -0.10
+REGISTER_OCTAVES = {
+    "low": KEYBOARD_OCTAVE - 1,
+    "mid": KEYBOARD_OCTAVE,
+    "high": KEYBOARD_OCTAVE + 1,
+}
+
 # Reference vowel formants, used only to label the nearest vowel on screen.
 VOWEL_REF = {
     "i": (240, 2400),
@@ -240,11 +252,17 @@ def note_freq(degree, octave):
     return SCALE_ROOT_HZ * 2.0 ** (octave + step / 12.0)
 
 
-# Five fixed note frequencies, one per finger (thumb=lowest, pinky=highest).
-NOTE_FREQS = [note_freq(d, KEYBOARD_OCTAVE) for d in range(1, 6)]
-
 # MediaPipe hand-landmark indices of the 5 fingertips (thumb..pinky).
 FINGER_TIPS = [4, 8, 12, 16, 20]
+
+
+def register_from_dy(dy):
+    """Three-zone register from note-hand wrist y minus timbre-hand wrist y."""
+    if dy <= REGISTER_HIGH_DY:
+        return "high"
+    if dy >= REGISTER_LOW_DY:
+        return "low"
+    return "mid"
 
 
 class ADSR:
@@ -664,6 +682,8 @@ def main():
 
     # Finger-keyboard state (one voice per finger).
     finger_down = [False] * 5
+    voice_freqs = [0.0] * 5
+    current_register = "mid"
 
     # Preset-switch debounce.
     pending_preset = synth.preset
@@ -688,11 +708,12 @@ def main():
 
     with gesture_rec, face_lm, stream:
         print(
-            "Polyphonic finger synth: left hand plays 5 notes "
-            "(multiple bent = chord); right hand picks timbre "
+            "Polyphonic finger synth: right hand plays 5 notes "
+            "(multiple bent = chord); left hand picks timbre "
             "(palm=pad, fist=key, V=glass, point=drone, "
             "thumb-up=rift); "
-            "two-hand distance controls brightness. Press q to quit."
+            "horizontal distance controls brightness; vertical distance "
+            "selects low/mid/high register. Press q to quit."
         )
         while cap.isOpened():
             ret, frame = cap.read()
@@ -709,9 +730,9 @@ def main():
             gesture_result = gesture_rec.recognize_for_video(rgb, timestamp)
             face_result = face_lm.detect_for_video(rgb, timestamp)
 
-            # ---- Split hands: left = keyboard, right = expression / gesture ----
-            kb_hand = None  # left hand: 5-finger keyboard
-            expr_hand = None  # right hand: distance to kb_hand -> brightness
+            # ---- Split detected hands: note hand = keyboard, timbre hand = gestures ----
+            kb_hand = None  # note hand: 5-finger keyboard
+            expr_hand = None  # timbre hand: gesture + distance/height expression
             expr_gesture = "None"
             for i in range(len(gesture_result.hand_landmarks)):
                 label = gesture_result.handedness[i][0].category_name
@@ -739,7 +760,13 @@ def main():
                     synth.apply_preset(pending_preset)
                     pending_preset_frames = 0
 
-            # ---- Left hand: per-finger curl -> per-voice note_on / note_off ----
+            # ---- Note-hand relative height -> 3 keyboard registers ----
+            hand_dy = 0.0
+            if kb_hand is not None and expr_hand is not None:
+                hand_dy = kb_hand[0].y - expr_hand[0].y
+                current_register = register_from_dy(hand_dy)
+
+            # ---- Note hand: per-finger curl -> per-voice note_on / note_off ----
             cur_ratios = [1.0] * 5
             if kb_hand is not None:
                 cur_ratios = finger_curl_ratios(kb_hand)
@@ -747,14 +774,16 @@ def main():
                     r = cur_ratios[i]
                     if not finger_down[i] and r < CURL_ON[i]:
                         finger_down[i] = True
-                        synth.note_on(i, NOTE_FREQS[i])
+                        freq = note_freq(i + 1, REGISTER_OCTAVES[current_register])
+                        voice_freqs[i] = freq
+                        synth.note_on(i, freq)
                     elif finger_down[i] and r > CURL_OFF[i]:
                         finger_down[i] = False
                         synth.note_off(i)
                 draw_hand(frame, kb_hand, (255, 0, 255))
                 draw_finger_keys(frame, kb_hand, finger_down)
             else:
-                # Lost the left hand: release everything (no stuck notes).
+                # Lost the note hand: release everything (no stuck notes).
                 for i in range(5):
                     if finger_down[i]:
                         finger_down[i] = False
@@ -778,7 +807,7 @@ def main():
                 ew = (int(expr_hand[0].x * w), int(expr_hand[0].y * h))
                 cv2.line(frame, kw, ew, (0, 255, 255), 2)
             elif expr_hand is not None:
-                # Right hand alone: still draw it (gestures still work).
+                # Timbre hand alone: still draw it (gestures still work).
                 draw_hand(frame, expr_hand, (255, 128, 0))
 
             # ---- Mouth shape -> formants F1 / F2 ----
@@ -805,11 +834,12 @@ def main():
             # ---- Terminal log ----
             fstr = "".join(str(i + 1) if d else "-" for i, d in enumerate(finger_down))
             rstr = " ".join(f"{r:.2f}" for r in cur_ratios)
-            chord = [NOTE_FREQS[i] for i in range(5) if finger_down[i]]
+            chord = [voice_freqs[i] for i in range(5) if finger_down[i]]
             chord_str = "+".join(f"{f:.0f}" for f in chord) if chord else "-"
             gate_str = "ON " if synth.any_gate else "off"
             print(
                 f"preset={synth.preset:5s}({expr_gesture})  "
+                f"reg={current_register:4s}(dy={hand_dy:+.2f})  "
                 f"curl[{rstr}]  fingers[{fstr}]  "
                 f"chord=[{chord_str}]Hz  "
                 f"bright={synth.target_mod_index:4.1f}(dist={hand_dist:.2f})  "
@@ -821,7 +851,7 @@ def main():
             cv2.putText(
                 frame,
                 f"preset {synth.preset}  fingers [{fstr}]  "
-                f"bright={synth.target_mod_index:.1f}  /{vowel}/",
+                f"reg={current_register}  bright={synth.target_mod_index:.1f}  /{vowel}/",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,

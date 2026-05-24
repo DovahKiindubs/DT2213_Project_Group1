@@ -1,7 +1,7 @@
 # DT2213 — Polyphonic Finger-Keyboard FM Formant Synth
 
 A real-time gesture-controlled synthesizer built on a webcam + MediaPipe:
-your left hand plays 5 notes (one per finger), your right hand picks the
+your right hand plays 5 notes (one per finger), your left hand picks the
 timbre with a gesture, your mouth shapes the vowel, and the horizontal
 distance between your hands controls how bright the sound is.
 
@@ -38,8 +38,10 @@ Press **q** in the video window to quit.
 - **Straighten the finger** → that note releases naturally according to the
   current timbre's ADSR release
 - **Bend several fingers at once** → those notes stack into a chord
+- **Move the note hand above / level with / below the timbre hand** → play the
+  same five notes in high / mid / low registers
 
-### Right hand gesture = pick the timbre
+### Left hand gesture = pick the timbre
 
 | Gesture | Preset | Character |
 |---|---|---|
@@ -64,9 +66,15 @@ the top-left of the video changes with the preset.
 Hands together → dark, hands apart → bright. A yellow line is drawn
 between the two wrists as a visual cue for the distance.
 
+### Vertical distance between hands = register
+
+Note hand higher than timbre hand → high register. Hands level → middle
+register. Note hand lower than timbre hand → low register. The register is
+read when a finger first bends, so held notes do not slide if your hands move.
+
 ## Calibration
 
-While the program is running, watch the terminal output. Two values
+While the program is running, watch the terminal output. Three values
 matter most:
 
 - **`curl[t i m r p]`** — the real-time curl ratio for each of the 5
@@ -80,6 +88,9 @@ matter most:
 - **`dist=...`** — the horizontal distance between the wrists. Watch it
   with your hands together and with your hands wide apart, then adjust
   `DIST_MIN, DIST_MAX` accordingly.
+- **`dy=...`** — the vertical distance from note-hand wrist to timbre-hand
+  wrist. Adjust `REGISTER_HIGH_DY` / `REGISTER_LOW_DY` if high or low register
+  is too hard to reach.
 
 ## Project layout
 
