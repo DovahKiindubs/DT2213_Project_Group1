@@ -203,6 +203,7 @@ PENTATONIC_STEPS = [0, 2, 4, 7, 9]  # major pentatonic semitone offsets
 SCALE_ROOT_HZ = 65.41  # C2 -- lowest possible note
 KEYBOARD_OCTAVE = 2  # which octave (0-based) the middle register sits in
 
+###############################
 # Per-finger curl thresholds with hysteresis.
 # Curl ratio < CURL_ON  -> finger is now bent (note-on).
 # Curl ratio > CURL_OFF -> finger is now straight (note-off).
@@ -210,7 +211,7 @@ KEYBOARD_OCTAVE = 2  # which octave (0-based) the middle register sits in
 # The thumb is slightly bent even in a relaxed hand, so its threshold must
 # be much lower -- only a deliberate, deep bend should trigger it.
 CURL_ON = [0.70, 0.95, 0.95, 0.95, 0.95]
-CURL_OFF = [0.75, 1.00, 1.00, 1.00, 1.00]
+CURL_OFF = [0.80, 1.00, 1.00, 1.00, 1.00]
 
 # Formant centre-frequency ranges (Hz), swept by mouth shape.
 F1_MIN, F1_MAX = 200.0, 1600.0
@@ -220,16 +221,18 @@ F2_MIN, F2_MAX = 500.0, 3200.0
 # narrower, more "vowel-like".
 FILTER_Q = 4.0
 
+
 # Horizontal distance between the two wrists (normalised image coords) mapped
 # to MOD_INDEX. Hands together -> dark, hands apart -> bright.
 # Watch the printed `dist=` value to calibrate.
 DIST_MIN, DIST_MAX = 0.15, 0.75
 
+#############################
 # Note-hand height relative to the timbre-hand wrist selects one of three
 # keyboard registers. Image y grows downward, so negative dy means the note
 # hand is higher.
-REGISTER_LOW_DY = 0.10
-REGISTER_HIGH_DY = -0.10
+REGISTER_LOW_DY = 0.20
+REGISTER_HIGH_DY = -0.20
 REGISTER_OCTAVES = {
     "low": KEYBOARD_OCTAVE - 1,
     "mid": KEYBOARD_OCTAVE,
@@ -594,7 +597,24 @@ LIPS_INNER = [
     80,
     191,
 ]
+# angle of thumb finger
+def angle_deg(a, b, c):
+    """
 
+    """
+    ba = np.array([a.x - b.x, a.y - b.y])
+    bc = np.array([c.x - b.x, c.y - b.y])
+
+    nba = np.linalg.norm(ba)
+    nbc = np.linalg.norm(bc)
+
+    if nba < 1e-6 or nbc < 1e-6:
+        return 180.0
+
+    cosang = np.dot(ba, bc) / (nba * nbc)
+    cosang = np.clip(cosang, -1.0, 1.0)
+
+    return np.degrees(np.arccos(cosang))
 
 def finger_curl_ratios(landmarks):
     """Curl ratio for each of the 5 fingers (thumb, index, middle, ring, pinky).
@@ -613,8 +633,13 @@ def finger_curl_ratios(landmarks):
         )
 
     ratios = []
-    base = dist(2, 9)
-    ratios.append(dist(4, 9) / base if base > 1e-6 else 1.0)  # thumb
+    thumb_angle = angle_deg(
+        landmarks[2],  # MCP
+        landmarks[3],  # IP joint
+        landmarks[4],  # tip
+    )
+    ratios.append(thumb_angle / 180.0)  # thumb
+
     for tip, pip in ((8, 6), (12, 10), (16, 14), (20, 18)):
         d_pip = dist(0, pip)
         ratios.append(dist(0, tip) / d_pip if d_pip > 1e-6 else 1.0)
@@ -670,6 +695,64 @@ def nearest_vowel(f1, f2):
         if d < best_d:
             best, best_d = name, d
     return best
+
+def draw_formant_ui(frame, synth, F1_MIN, F1_MAX, F2_MIN, F2_MAX, vowel):
+    h, w = frame.shape[:2]
+
+    # --- UI window geometry ---
+    ui_w = 220
+    ui_h = 220
+
+    ui_x0 = w // 2 - ui_w // 2
+    ui_y0 = 40
+    ui_x1 = ui_x0 + ui_w
+    ui_y1 = ui_y0 + ui_h
+
+    # --- frame ---
+    cv2.rectangle(frame, (ui_x0, ui_y0), (ui_x1, ui_y1), (255, 255, 255), 2)
+
+    cv2.putText(
+        frame,
+        "FORMANT (F1 / F2)",
+        (ui_x0, ui_y0 - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (255, 255, 255),
+        2,
+    )
+
+    # --- axes ---
+    cv2.line(frame, (ui_x0, ui_y1), (ui_x1, ui_y1), (180, 180, 180), 1)  # F2 axis
+    cv2.line(frame, (ui_x0, ui_y0), (ui_x0, ui_y1), (180, 180, 180), 1)  # F1 axis
+
+    # --- normalize ---
+    f1_norm = (synth.f1 - F1_MIN) / (F1_MAX - F1_MIN)
+    f2_norm = (synth.f2 - F2_MIN) / (F2_MAX - F2_MIN)
+
+    f1_norm = float(np.clip(f1_norm, 0.0, 1.0))
+    f2_norm = float(np.clip(f2_norm, 0.0, 1.0))
+
+    # --- map to UI coords ---
+    px = int(ui_x0 + f2_norm * ui_w)
+    py = int(ui_y1 - f1_norm * ui_h)
+
+    # --- draw point ---
+    cv2.circle(frame, (px, py), 6, (0, 0, 255), -1)
+    cv2.circle(frame, (px, py), 12, (0, 0, 255), 2)
+
+    # --- vowel label ---
+    cv2.putText(
+        frame,
+        f"/{vowel}/",
+        (px + 10, py - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 255),
+        2,
+    )
+
+def lerp(a, b, t):
+    return a + (b - a) * t
 
 
 def main():
@@ -805,7 +888,24 @@ def main():
                 h, w = frame.shape[:2]
                 kw = (int(kb_hand[0].x * w), int(kb_hand[0].y * h))
                 ew = (int(expr_hand[0].x * w), int(expr_hand[0].y * h))
-                cv2.line(frame, kw, ew, (0, 255, 255), 2)
+
+                # Add line thickness change
+                if current_register == "low":
+                    line_thickness = 16
+                elif current_register == "mid":
+                    line_thickness = 4
+                else:  # high
+                    line_thickness = 1
+                
+                # Add line color change depending on hand distance
+                t = dnorm ** 0.7
+                line_color = (
+                    int(lerp(0, 0, t)),       # B
+                    int(lerp(0, 255, t)),     # G
+                    int(lerp(255, 255, t))    # R
+                )
+                cv2.line(frame, kw, ew, line_color, line_thickness)
+
             elif expr_hand is not None:
                 # Timbre hand alone: still draw it (gestures still work).
                 draw_hand(frame, expr_hand, (255, 128, 0))
@@ -830,6 +930,10 @@ def main():
                 synth.target_f2 = F2_MIN + sm_mouth * (F2_MAX - F2_MIN)
                 vowel = nearest_vowel(synth.target_f1, synth.target_f2)
                 draw_face(frame, face_result)
+
+            # ---- Mouth shap real-time animation ---
+            draw_formant_ui(frame, synth, F1_MIN, F1_MAX, F2_MIN, F2_MAX, vowel)
+
 
             # ---- Terminal log ----
             fstr = "".join(str(i + 1) if d else "-" for i, d in enumerate(finger_down))
